@@ -34,7 +34,11 @@ services:
       start_period: 30s
 
   app:
-    image: ${APP_IMAGE:?请在 .env 中设置 APP_IMAGE}
+    # 镜像在部署服务器本地构建（该机 Docker Hub 被阻断，无法从外部仓库拉取）
+    image: ${APP_IMAGE:-phychem-app:1.0.0}
+    build:
+      context: ..
+      dockerfile: Dockerfile.prod
     container_name: phychem-app
     restart: unless-stopped
     depends_on:

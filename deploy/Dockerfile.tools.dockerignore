@@ -1,0 +1,13 @@
+# tools 镜像专用忽略规则（构建上下文为仓库根目录，用 -f deploy/Dockerfile.tools）
+node_modules
+.next
+.next-*
+.git
+.env
+.env.*
+!.env.example
+docs
+tests
+coverage
+*.log
+.DS_Store

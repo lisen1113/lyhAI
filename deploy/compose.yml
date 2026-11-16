@@ -1,0 +1,70 @@
+# 生产部署：独立 Compose 项目，与宿主上其他业务完全隔离
+# 规则：独立项目名 / 独立 PG / PG 不对公网开放 / 应用 8088→3000 / 资源与日志限额
+name: phychem-trainer
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: phychem-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DATABASE:-physchem_v1}
+      POSTGRES_USER: ${PG_USER:-physchem}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请在 .env 中设置 PG_PASSWORD}
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 建表采用 `prisma migrate deploy`（见 scripts/seed.sh），保持迁移状态可追溯。
+      # db-init/001_schema.sql 仅作为应急兜底，不自动挂载，避免重复建表。
+    networks: [internal]
+    # 不映射任何端口（含 127.0.0.1），数据库只在容器网络内可见
+    mem_limit: ${DB_MEM:-512m}
+    cpus: ${DB_CPUS:-0.5}
+    shm_size: 128m
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-physchem} -d ${PG_DATABASE:-physchem_v1}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    image: ${APP_IMAGE:?请在 .env 中设置 APP_IMAGE}
+    container_name: phychem-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      TZ: Asia/Shanghai
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      # 本阶段经 http://IP:8088 访问，必须为 false；将来上 HTTPS 再改 true
+      COOKIE_SECURE: "false"
+      DATABASE_URL: postgresql://${PG_USER:-physchem}:${PG_PASSWORD}@db:5432/${PG_DATABASE:-physchem_v1}?schema=public
+      AI_PROVIDER: none
+    ports:
+      - "${APP_PORT:-8088}:3000"
+    networks: [internal]
+    mem_limit: ${APP_MEM:-768m}
+    cpus: ${APP_CPUS:-0.8}
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  pgdata:
+    name: phychem-trainer_pgdata
+
+networks:
+  internal:
+    name: phychem-trainer-net
+    driver: bridge

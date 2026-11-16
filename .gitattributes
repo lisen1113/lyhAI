@@ -1,0 +1,9 @@
+# 统一换行：源码与脚本一律 LF，避免 Linux 上 bash 脚本出现 bad interpreter
+* text=auto eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary

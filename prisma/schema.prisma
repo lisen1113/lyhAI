@@ -1,0 +1,710 @@
+// Prisma Schema — 初中物理化学 AI 自适应训练系统 V1
+// PostgreSQL 18 / UUID / UTC 存储 / 关键参数配置化
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举 ====================
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SubjectCode {
+  PH
+  CH
+}
+
+enum NodeLevel {
+  SUBJECT
+  MODULE
+  UNIT
+  KNOWLEDGE_NODE
+}
+
+enum PrereqStrength {
+  HARD
+  SOFT
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  TRUE_FALSE
+  FILL_BLANK
+  NUMERIC
+  STEP_BY_STEP
+  // 后续扩展：CHEM_EQUATION / MATCHING / ORDERING / IMAGE_CHART
+}
+
+enum Difficulty {
+  L1
+  L2
+  L3
+  L4
+  L5
+}
+
+enum ReviewStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PUBLISHED
+  REJECTED
+}
+
+enum AttemptOutcome {
+  FIRST_TRY_CORRECT
+  CORRECT_AFTER_HINT_1
+  CORRECT_AFTER_HINT_2
+  CORRECT_AFTER_HINT_3
+  CORRECT_AFTER_SOLUTION
+  WRONG
+  SKIPPED
+}
+
+enum MasteryStatus {
+  NOT_STARTED
+  INTRO
+  LEARNING
+  BASIC
+  PROFICIENT
+  STABLE
+}
+
+enum PlanSegment {
+  WARMUP
+  REVIEW
+  MICRO_LEARN
+  PRACTICE
+  INDEPENDENT
+  SUMMARY
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  EXPIRED
+}
+
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum ErrorCategory {
+  GENERAL
+  PHYSICS
+  CHEMISTRY
+}
+
+enum AssessmentType {
+  DIAGNOSTIC
+  WEEKLY
+  MOCK
+}
+
+enum AssessmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum FeedbackLevel {
+  EASY
+  JUST_RIGHT
+  HARD
+}
+
+// ==================== 身份与组织 ====================
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String     @default("default")
+  username     String     @unique
+  passwordHash String
+  displayName  String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  studentProfile StudentProfile?
+  sessions       PracticeSession[]
+  attempts       QuestionAttempt[]
+  masteries      StudentMastery[]
+  plans          DailyPlan[]
+  reviewSchedules ReviewSchedule[]
+  errors         StudentError[]
+  assessments    AssessmentAttempt[]
+  achievements   StudentAchievement[]
+  weeklyReports  WeeklyReport[]
+  aiLogs         AIInteractionLog[]
+  groupLinks     StudentGroup[]
+  sessions_auth  Session[]
+  createdPlans   DailyPlan[]      @relation("PlanCreator")
+
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+model StudentProfile {
+  id            String    @id @default(uuid())
+  tenantId      String    @default("default")
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nickname      String?
+  grade         Int       @default(9)
+  targetPhysics Int?
+  targetChemistry Int?
+  mockExamDate  DateTime?
+  preference    Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("student_profiles")
+}
+
+model StudyGroup {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default")
+  name        String
+  goal        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  students StudentGroup[]
+
+  @@map("study_groups")
+}
+
+model StudentGroup {
+  id        String     @id @default(uuid())
+  groupId   String
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime   @default(now())
+
+  @@unique([groupId, studentId])
+  @@map("student_groups")
+}
+
+// ==================== 知识体系 ====================
+
+model Subject {
+  id          String       @id @default(uuid())
+  tenantId    String       @default("default")
+  code        SubjectCode  @unique
+  name        String
+  description String?
+  nodes       KnowledgeNode[]
+  questions   Question[]
+
+  @@map("subjects")
+}
+
+model KnowledgeNode {
+  id          String      @id @default(uuid())
+  tenantId    String      @default("default")
+  code        String      @unique
+  name        String
+  level       NodeLevel
+  subjectId   String
+  subject     Subject     @relation(fields: [subjectId], references: [id])
+  parentId    String?
+  parent      KnowledgeNode?  @relation("NodeTree", fields: [parentId], references: [id])
+  children    KnowledgeNode[] @relation("NodeTree")
+  examWeight  Float       @default(0.5)
+  repairability Float     @default(0.7)
+  status      String      @default("ACTIVE") // ACTIVE / ARCHIVED
+  order       Int         @default(0)
+  createdAt   DateTime    @default(now())
+
+  microSkills     MicroSkill[]
+  prereqs         KnowledgePrerequisite[] @relation("NodePrereq")
+  prereqFor       KnowledgePrerequisite[] @relation("NodeIsPrereq")
+  questionLinks   QuestionKnowledge[]
+  masteries       StudentMastery[]
+  reviewSchedules ReviewSchedule[]
+
+  @@index([subjectId, level])
+  @@index([parentId])
+  @@map("knowledge_nodes")
+}
+
+model KnowledgePrerequisite {
+  id                  String          @id @default(uuid())
+  nodeId              String
+  node                KnowledgeNode   @relation("NodePrereq", fields: [nodeId], references: [id], onDelete: Cascade)
+  prerequisiteNodeId  String
+  prerequisiteNode    KnowledgeNode   @relation("NodeIsPrereq", fields: [prerequisiteNodeId], references: [id], onDelete: Cascade)
+  strength            PrereqStrength  @default(SOFT)
+
+  @@unique([nodeId, prerequisiteNodeId])
+  @@map("knowledge_prerequisites")
+}
+
+model MicroSkill {
+  id            String    @id @default(uuid())
+  tenantId      String    @default("default")
+  code          String    @unique
+  name          String
+  nodeId        String
+  node          KnowledgeNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  context       String?
+  coreConcept   String?
+  formula       String?
+  commonPitfalls Json?
+  basicExample  String?
+  estimatedMinutes Int    @default(5)
+  examWeight    Float     @default(0.5)
+  repairability Float     @default(0.7)
+  status        String    @default("ACTIVE")
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  masteries       StudentMastery[]
+  reviewSchedules ReviewSchedule[]
+  planItems       DailyPlanItem[]
+  questions       Question[]
+
+  @@index([nodeId])
+  @@map("micro_skills")
+}
+
+// ==================== 题库 ====================
+
+model Question {
+  id            String        @id @default(uuid())
+  tenantId      String        @default("default")
+  subjectId     String
+  type          QuestionType
+  difficulty    Difficulty    @default(L2)
+  stem          String        @db.Text
+  imageUrl      String?
+  options       Json?
+  standardAnswer String        @db.Text
+  solution      String        @db.Text        // 标准解析（Level 4 基础）
+  estimatedTime Int           @default(60)    // 秒
+  source        String?
+  // 变式层级：1 原型（建立模型）/ 2 轻变式（换问法、换条件）/ 3 情境变式（真实情境、跨步综合）
+  variantLevel  Int           @default(1)
+  // 模板题：同一题干仅替换数值，只用于"熟练层"原型练习，不计入变式阶梯
+  isTemplate    Boolean       @default(false)
+  // 直接归属的微技能（108 个 K 节点与 108 个微技能一一对应，保证掌握度精确落到技能）
+  microSkillId  String?
+  microSkill    MicroSkill?   @relation(fields: [microSkillId], references: [id])
+  reviewStatus  ReviewStatus  @default(DRAFT)
+  deletedAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  knowledgeLinks QuestionKnowledge[]
+  hints         QuestionHint[]
+  errorTags     QuestionErrorTag[]
+  attempts      QuestionAttempt[]
+  planItems     DailyPlanItem[]
+  assessmentQuestions AssessmentQuestion[]
+
+  @@index([subjectId, reviewStatus])
+  @@index([deletedAt])
+  @@index([microSkillId])
+  @@map("questions")
+}
+
+model QuestionKnowledge {
+  id            String        @id @default(uuid())
+  questionId    String
+  question      Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  nodeId        String
+  node          KnowledgeNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  isPrimary     Boolean       @default(true)
+  variantGroup  String?       // 变式题分组，复测优先同组变式
+
+  @@unique([questionId, nodeId])
+  @@index([nodeId, isPrimary])
+  @@map("question_knowledge")
+}
+
+model QuestionHint {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  level      Int      // 1 方向 / 2 关键条件 / 3 关键公式框架 / 4 完整解析
+  content    String   @db.Text
+
+  @@unique([questionId, level])
+  @@map("question_hints")
+}
+
+model ErrorTag {
+  id          String        @id @default(uuid())
+  tenantId    String        @default("default")
+  code        String        @unique
+  name        String
+  category    ErrorCategory
+  description String?
+
+  questions QuestionErrorTag[]
+  studentErrors StudentError[]
+
+  @@map("error_tags")
+}
+
+model QuestionErrorTag {
+  id         String    @id @default(uuid())
+  questionId String
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  errorTagId String
+  errorTag   ErrorTag  @relation(fields: [errorTagId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, errorTagId])
+  @@map("question_error_tags")
+}
+
+// ==================== 训练与作答 ====================
+
+model DailyPlan {
+  id          String      @id @default(uuid())
+  tenantId    String      @default("default")
+  studentId   String
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  primarySubject SubjectCode
+  totalMinutes Int        @default(30)
+  status      PlanStatus  @default(DRAFT)
+  createdById String?
+  createdBy   User?       @relation("PlanCreator", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  items       DailyPlanItem[]
+
+  @@unique([studentId, date, primarySubject])
+  @@index([studentId, status])
+  @@map("daily_plans")
+}
+
+model DailyPlanItem {
+  id            String       @id @default(uuid())
+  planId        String
+  plan          DailyPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  segment       PlanSegment
+  order         Int
+  plannedMinutes Int
+  questionId    String?
+  question      Question?    @relation(fields: [questionId], references: [id])
+  microSkillId  String?
+  microSkill    MicroSkill?  @relation(fields: [microSkillId], references: [id])
+  remedial      Boolean      @default(false)
+  boost         Boolean      @default(false)
+  // 该段完成时间（微知识卡点「我学会了」、题目段答完即记），用于今日总结统计
+  completedAt   DateTime?
+
+  @@index([planId, order])
+  @@map("daily_plan_items")
+}
+
+model PracticeSession {
+  id          String        @id @default(uuid())
+  tenantId    String        @default("default")
+  studentId   String
+  student     User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  planId      String?
+  status      SessionStatus @default(IN_PROGRESS)
+  startedAt   DateTime      @default(now())
+  endedAt     DateTime?
+  checkpoint  Json?         // 断点恢复
+  feedback    FeedbackLevel?
+
+  attempts    QuestionAttempt[]
+
+  @@index([studentId, status])
+  @@map("practice_sessions")
+}
+
+model QuestionAttempt {
+  id            String          @id @default(uuid())
+  tenantId      String          @default("default")
+  sessionId     String
+  session       PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question        @relation(fields: [questionId], references: [id])
+  outcome       AttemptOutcome
+  answer        Json?
+  correct       Boolean
+  idempotencyKey String
+  timeSpentSec  Int             @default(0)
+  startedAt     DateTime        @default(now())
+  submittedAt   DateTime        @default(now())
+  // 原始记录不可覆盖：无 updatedAt，应用层禁止 update
+
+  steps         AttemptStep[]
+  hintsUsed     AttemptHint[]
+
+  @@unique([studentId, questionId, sessionId])
+  @@unique([idempotencyKey])
+  @@index([studentId, submittedAt])
+  @@map("question_attempts")
+}
+
+model AttemptStep {
+  id         String          @id @default(uuid())
+  attemptId  String
+  attempt    QuestionAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  stepIndex  Int
+  answer     String?
+  correct    Boolean?
+  // 不可覆盖
+
+  @@unique([attemptId, stepIndex])
+  @@map("attempt_steps")
+}
+
+model AttemptHint {
+  id         String          @id @default(uuid())
+  attemptId  String
+  attempt    QuestionAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  level      Int
+  source     String          @default("FIXED") // FIXED / AI
+  requestedAt DateTime       @default(now())
+  // 不可覆盖
+
+  @@unique([attemptId, level])
+  @@map("attempt_hints")
+}
+
+model StudentError {
+  id          String    @id @default(uuid())
+  tenantId    String    @default("default")
+  studentId   String
+  student     User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attemptId   String?
+  errorTagId  String
+  errorTag    ErrorTag  @relation(fields: [errorTagId], references: [id])
+  note        String?
+  occurredAt  DateTime  @default(now())
+
+  @@index([studentId, errorTagId, occurredAt])
+  @@map("student_errors")
+}
+
+// ==================== 掌握与复测 ====================
+
+model StudentMastery {
+  id                  String        @id @default(uuid())
+  tenantId            String        @default("default")
+  studentId           String
+  student             User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  microSkillId        String
+  microSkill          MicroSkill    @relation(fields: [microSkillId], references: [id], onDelete: Cascade)
+  nodeId              String
+  node                KnowledgeNode @relation(fields: [nodeId], references: [id])
+  masteryScore        Float         @default(0)
+  confidenceScore     Float         @default(0)
+  independentAccuracy Float         @default(0)
+  hintDependency      Float         @default(0)
+  status              MasteryStatus @default(NOT_STARTED)
+  sampleCount         Int           @default(0)
+  recentOutcomes      Json?         // 滑动窗口最近 N 次结果
+  lastPracticedAt     DateTime?
+  nextReviewAt        DateTime?
+  updatedAt           DateTime      @updatedAt
+
+  changes MasteryChangeLog[]
+
+  @@unique([studentId, microSkillId])
+  @@index([studentId, status])
+  @@map("student_masteries")
+}
+
+model MasteryChangeLog {
+  id         String          @id @default(uuid())
+  masteryId  String
+  mastery    StudentMastery  @relation(fields: [masteryId], references: [id], onDelete: Cascade)
+  oldScore   Float
+  newScore   Float
+  reason     String          // attempt / review / assessment / scheduler
+  attemptId  String?
+  createdAt  DateTime        @default(now())
+
+  @@index([masteryId, createdAt])
+  @@map("mastery_change_logs")
+}
+
+model ReviewSchedule {
+  id            String        @id @default(uuid())
+  tenantId      String        @default("default")
+  studentId     String
+  student       User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  microSkillId  String
+  microSkill    MicroSkill    @relation(fields: [microSkillId], references: [id], onDelete: Cascade)
+  nodeId        String
+  node          KnowledgeNode @relation(fields: [nodeId], references: [id])
+  stage         Int           @default(0)      // 0-4 对应 1/3/7/14/30 天
+  nextReviewAt  DateTime
+  boost         Boolean       @default(false)
+  consecutiveFails Int        @default(0)
+  remedial      Boolean       @default(false)
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([studentId, microSkillId])
+  @@index([studentId, nextReviewAt])
+  @@map("review_schedules")
+}
+
+// ==================== 测验与报告 ====================
+
+model Assessment {
+  id          String          @id @default(uuid())
+  tenantId    String          @default("default")
+  type        AssessmentType
+  title       String
+  subjectId   String?
+  scheduledAt DateTime?
+  status      AssessmentStatus @default(SCHEDULED)
+  config      Json?
+  createdAt   DateTime        @default(now())
+
+  questions AssessmentQuestion[]
+  attempts  AssessmentAttempt[]
+
+  @@map("assessments")
+}
+
+model AssessmentQuestion {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     Question   @relation(fields: [questionId], references: [id])
+  order        Int        @default(0)
+  score        Float      @default(1)
+
+  @@unique([assessmentId, questionId])
+  @@map("assessment_questions")
+}
+
+model AssessmentAttempt {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers      Json?
+  score        Float?
+  analysis     Json?
+  startedAt    DateTime   @default(now())
+  completedAt  DateTime?
+
+  @@unique([assessmentId, studentId])
+  @@map("assessment_attempts")
+}
+
+model WeeklyReport {
+  id            String   @id @default(uuid())
+  tenantId      String   @default("default")
+  studentId     String
+  student       User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  weekStart     DateTime @db.Date
+  metrics       Json
+  highlights    Json?
+  weakPoints    Json?
+  nextFocus     Json?
+  generatedAt   DateTime @default(now())
+
+  @@unique([studentId, weekStart])
+  @@map("weekly_reports")
+}
+
+// ==================== AI 与系统 ====================
+
+model Achievement {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default")
+  code        String   @unique
+  name        String
+  description String?
+  icon        String?
+  criteria    Json
+
+  students StudentAchievement[]
+
+  @@map("achievements")
+}
+
+model StudentAchievement {
+  id            String       @id @default(uuid())
+  studentId     String
+  student       User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement  @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  awardedAt     DateTime     @default(now())
+
+  @@unique([studentId, achievementId])
+  @@map("student_achievements")
+}
+
+model AIInteractionLog {
+  id           String    @id @default(uuid())
+  tenantId     String    @default("default")
+  studentId    String?
+  student      User?     @relation(fields: [studentId], references: [id])
+  attemptId    String?
+  provider     String
+  model        String
+  promptVersion String
+  input        String    @db.Text
+  output       String?   @db.Text
+  inputTokens  Int?
+  outputTokens Int?
+  latencyMs    Int?
+  status       String    // SUCCESS / FAILURE / FALLBACK
+  error        String?
+  createdAt    DateTime  @default(now())
+
+  @@index([studentId, createdAt])
+  @@map("ai_interaction_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  tenantId    String   @default("default")
+  key         String
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@map("system_configs")
+}

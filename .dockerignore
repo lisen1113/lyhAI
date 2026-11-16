@@ -1,0 +1,24 @@
+# 依赖与构建产物（镜像内会重新安装 / 重新构建）
+node_modules
+.next
+.next-*
+.next-stale-*
+
+# 版本控制与本地环境
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# 文档与开发用脚本（运行期不需要）
+docs
+scripts
+tests
+coverage
+*.log
+README.md
+
+# 系统杂项
+.DS_Store
+Thumbs.db

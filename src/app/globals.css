@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+}
+
+/* 学生端：中性/积极，避免大面积红色 */
+.card {
+  @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm;
+}
+
+.btn-primary {
+  @apply rounded-xl bg-brand-600 px-4 py-2 font-medium text-white transition hover:bg-brand-700;
+}
+
+.input {
+  @apply w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand-500;
+}

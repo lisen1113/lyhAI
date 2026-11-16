@@ -48,3 +48,6 @@ next-env.d.ts
 deploy/.env
 deploy/.env.*
 !deploy/.env.prod.example
+
+# 交付打包产物
+/dist/

@@ -5,6 +5,17 @@
 **现有生产**：surfacedmp.com（**全程零触碰**）
 **状态**：**计划待批准 —— 尚未执行任何服务器操作**
 
+> **修订（2026-11-16 21:50）**：本计划已落地为仓库内可执行文件 ——
+> `Dockerfile.prod`、`deploy/compose.yml`、`deploy/scripts/{seed,backup-db,rollback}.sh`、
+> `deploy/.env.prod.example`、`.github/workflows/build-images.yml`。
+> 若本文档中的示例与仓库文件不一致，**以仓库文件为准**。
+>
+> 另有两处方案更新：
+> 1. 建表改用 tools 容器内执行 `prisma migrate deploy`（保留 `_prisma_migrations` 迁移状态）；
+>    `db-init/001_schema.sql` 降级为应急兜底，**不再自动挂载**，避免重复建表。
+> 2. 初始化顺序新增第 0 步 `seed-base.ts`（学科记录），否则 `seed-knowledge` 会报
+>    `Subject PH not found` —— 该问题已在全新库上实测复现并修复。
+
 ---
 
 ## 0. 架构与边界
@@ -497,7 +508,8 @@ docker exec phychem-db psql -U physchem -d physchem_v1 -c '\dt' | head -20
 
 | 步骤 | 脚本 | 作用 | 注意 |
 |---|---|---|---|
-| 1 | `seed-knowledge.ts` | 210 个节点（36 模块/55 单元/119 知识点）+ 119 微技能 + 65 条前置关系 | 必须最先 |
+| 0 | `seed-base.ts` | 学科记录（物理 / 化学） | **必须先跑**，否则知识树报 `Subject PH not found` |
+| 1 | `seed-knowledge.ts` | 210 个节点（36 模块/55 单元/119 知识点）+ 119 微技能 + 前置关系 | 依赖步骤 0 |
 | 2 | `seed-error-tags.ts` | 28 个错因标签 | 题库要绑定 |
 | 3 | `seed-questions.ts` | 基础题库（PQ-*） | 依赖节点 |
 | 4 | `seed-question-bank-v2.ts` | PQ2-* | **不写 microSkillId** |

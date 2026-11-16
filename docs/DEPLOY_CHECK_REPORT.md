@@ -318,4 +318,63 @@ docker inspect --format '{{.Name}} restarts={{.RestartCount}} health={{if .State
 
 ---
 
+## 十、修复进展（2026-11-16 21:50 更新）
+
+8 个 P0 **已全部修复并在本地实测通过**（未触碰服务器）。
+
+| 编号 | 修复内容 | 验证方式 | 结果 |
+|---|---|---|---|
+| P0-1 | `next.config.mjs` 增加 `output: "standalone"` | 隔离目录构建 | `.next-prod/standalone/server.js` 已生成 ✅ |
+| P0-2 | 新增 `public/favicon.svg` | 构建 + 容器 COPY 路径 | 目录存在 ✅ |
+| P0-3 | 新增 `.dockerignore` | 检查排除项 | 已排除 `.env`、`node_modules`、`.next*` ✅ |
+| P0-4 | Cookie 改为 `COOKIE_SECURE` 开关 | 起 standalone 实测登录 | 200，`Set-Cookie` **不含 Secure** ✅ |
+| P0-5 | 新增 `/api/health` | 实测请求 | `{"status":"ok","db":"ok"}` 200 ✅ |
+| P0-6 | 生产 compose 不含 nginx | 文件审查 | 已移除，仅 app + db ✅ |
+| P0-7 | 新增 `seed-production.ts` + `seed-base.ts` | 全新库实跑 | 账号总数 4，`lisen` 就绪 ✅ |
+| P0-8 | 统一 PostgreSQL 18 | compose 审查 | `postgres:18-alpine` ✅ |
+
+### 额外发现的两个真实缺陷（已修）
+
+1. **`seed-knowledge.ts` 依赖学科记录**：全新库直接跑会报 `Subject PH not found`。
+   原 `seed.ts` 顺带建了学科，但它是演示 seed（含 14 个演示节点、演示题、student1-3）。
+   → 拆出 `prisma/seed-base.ts` 只建学科，生产初始化顺序改为
+   `seed-base → seed-knowledge → …`。
+2. **生成器题库整批退回 L1**：`seed-questions.ts` 生成的 220 道 `PQ-*/CQ-*` 不写
+   `variantLevel`，而 `sync-variant-level.ts` 又没把这批纳入映射，导致全新库中
+   化学 100 道题全部落为 L1，达标率只有 **102/119**。
+   → 让 seed 直接按 `difficulty` 写入层级，并把生成器题库纳入回填映射；
+   另补 `V21` 两道题补齐「重力的概念与方向」的 L2 缺口。
+
+### 全新库端到端验证结果（模拟生产首次初始化）
+
+在本地新建空库，按生产顺序执行：
+
+```
+prisma migrate deploy → seed-base → seed-knowledge → seed-error-tags
+→ seed-questions → bank-v2 → bank-v3 → bank-v5v6
+→ backfill-microskill → sync-variant-level → seed-achievements → seed-production
+```
+
+| 指标 | 结果 |
+|---|---|
+| 知识点 / 微技能 | 210 节点、119 技能 |
+| 题库 | 1093 题（物理 657 / 化学 436） |
+| 变式层级 | L1 240 / L2 454 / L3 399 |
+| **达标率** | **119/119 = 100%**（物理 70/70、化学 49/49） |
+| 账号 | 4 个（lisen + 3 名学生） |
+| 无 L1 原型的技能 | 0 个 |
+
+> 结论：**生产初始化路径已被完整验证，不是纸面推演。**
+
+### 仍未解决的外部依赖
+
+| 事项 | 状态 |
+|---|---|
+| 服务器 SSH 访问 | ❌ 未提供凭据，无法执行任何服务器命令 |
+| 镜像仓库 / CI | ⏳ 已备好 GitHub Actions 工作流，需推送到仓库后触发 |
+| 云快照 | ❌ 需你在控制台创建（或提供 tccli 密钥） |
+| 代码推送 | ⚠️ 本机 `github.com:443` 被网络代理阻断（`CONNECT 502`），`api.github.com` 可通，需令牌走 API 通道 |
+
+---
+
 *报告人：AI 开发助手　｜　核对方式：本地实跑 + 静态审计　｜　未覆盖项：服务器侧全部指标（待授权）*

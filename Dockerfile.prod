@@ -4,12 +4,15 @@ FROM node:22-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # 生产机出口受限：Debian 官方源在容器内极慢，统一切到腾讯云镜像（内网命中）
+# 必须用 http：bookworm-slim 基础镜像未内置 CA 根证书，走 https 会报
+# "No system certificates available"，而装 ca-certificates 本身又依赖 apt。
+# Debian 源的完整性由 InRelease 的 GPG 签名保证，不依赖 TLS。
 # bookworm 使用 deb822 格式（/etc/apt/sources.list.d/debian.sources），同时兼容旧格式
 RUN set -eux; \
     for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
       if [ -f "$f" ]; then \
-        sed -i -e 's|https\?://deb.debian.org|https://mirrors.cloud.tencent.com|g' \
-               -e 's|https\?://security.debian.org|https://mirrors.cloud.tencent.com|g' "$f"; \
+        sed -i -e 's|https\?://deb.debian.org|http://mirrors.cloud.tencent.com|g' \
+               -e 's|https\?://security.debian.org|http://mirrors.cloud.tencent.com|g' "$f"; \
       fi; \
     done
 

@@ -14,7 +14,9 @@ services:
       TZ: Asia/Shanghai
       PGTZ: Asia/Shanghai
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG 18+ 官方镜像要求挂载到 /var/lib/postgresql（数据落在其下的 18/docker 子目录），
+      # 挂到 /var/lib/postgresql/data 会被镜像判定为“旧数据残留”并拒绝启动。
+      - pgdata:/var/lib/postgresql
       # 建表采用 `prisma migrate deploy`（见 scripts/seed.sh），保持迁移状态可追溯。
       # db-init/001_schema.sql 仅作为应急兜底，不自动挂载，避免重复建表。
     networks: [internal]

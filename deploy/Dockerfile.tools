@@ -5,11 +5,12 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # 与生产镜像保持一致：Debian 源切腾讯云镜像
+# 必须用 http：基础镜像未内置 CA 根证书，https 会握手失败；apt 靠 GPG 验签保证完整性
 RUN set -eux; \
     for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
       if [ -f "$f" ]; then \
-        sed -i -e 's|https\?://deb.debian.org|https://mirrors.cloud.tencent.com|g' \
-               -e 's|https\?://security.debian.org|https://mirrors.cloud.tencent.com|g' "$f"; \
+        sed -i -e 's|https\?://deb.debian.org|http://mirrors.cloud.tencent.com|g' \
+               -e 's|https\?://security.debian.org|http://mirrors.cloud.tencent.com|g' "$f"; \
       fi; \
     done
 
